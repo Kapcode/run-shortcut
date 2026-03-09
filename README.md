@@ -99,5 +99,3 @@ run-shortcut --remove-launcher "speak-text"
 * [ ] **Native OSD**: A Go/Python-based overlay for pure Wayland environments.
 
 ---
-
-**Would you like me to use Python to write this directly to your `README.md` file now, or should we dive into building the "Recording Mode" logic?**
