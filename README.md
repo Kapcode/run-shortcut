@@ -92,7 +92,7 @@ run-shortcut --remove-launcher "speak-text"
 ---
 
 ## 🗺 Future Roadmap
-
+* [ ] **Testing in X11**: need to test in X11, the tool used is differnt in Wayland and X11.
 * [ ] **Recording Mode**: Add `--record` to capture live mouse coordinates and clicks.
 * [ ] **Sequence Support**: Handle semicolon-separated commands in one string.
 * [ ] **Window Targeting**: Force focus on specific app titles before firing.
