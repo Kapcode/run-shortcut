@@ -1,161 +1,100 @@
+---
 
-# run-shortcut
+# ⚡ Kapcode run-shortcut
 
-A universal, cross-platform keyboard shortcut emulator for Linux. `run-shortcut` automatically detects whether you are running **X11** or **Wayland** and routes keystrokes through `xdotool` or `ydotool` accordingly.
+**The Universal Linux Macro Engine**
 
-Developed by [Kapcode](https://github.com/kapcode) for specialized macro solutions and system automation.
+`run-shortcut` is a high-performance wrapper for `xdotool` and `ydotool`. It automatically detects your display server (X11 vs. Wayland), manages hardware daemons, handles complex hardware permissions, and provides real-time On-Screen Display (OSD) feedback.
 
 ## 🚀 Features
 
-- **Auto-Detection:** Automatically switches between `xdotool` (X11) and `ydotool` (Wayland).
-- **Desktop Integration:** Native support for generating Pop!_OS/GNOME/Xfce `.desktop` app launchers.
-- **Native Installation:** Includes a built-in installer to deploy itself to `/usr/local/bin`.
-- **Strict Naming Enforcement:** Rejects execution if renamed or given a `.sh` extension, ensuring it is treated as a compiled system binary.
-- **Modifier Support:** Handles complex combinations like `ctrl alt shift p` natively.
-- **Human Simulation:** Includes fixed or randomized delays and dynamic "autowait" between keystrokes to mimic human typing.
-- **Dependency Aware:** Performs intelligent version checks (via binary or `dpkg`) and provides compatibility warnings for older tool builds.
+* **Auto-Switching Display Logic**: Seamlessly switches between `xdotool` (X11) and `ydotool` (Wayland).
+* **Integrated OSD**: Uses `xosd-bin` to provide a non-focus-stealing visual cue during macro execution.
+* **Auto-Daemon Management**: Automatically checks for and starts `ydotoold` if it's missing.
+* **One-Command Permissions**: Configures `uinput` udev rules and user groups during installation.
+* **GUI Launcher Generator**: Create `.desktop` files for your dock that inherit your full environment and log errors to `/tmp`.
 
-## 📦 Installation
+---
 
-The easiest way to use `run-shortcut` is to install it globally on your system. 
+## 🛠 Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/kapcode/run-shortcut.git](https://github.com/kapcode/run-shortcut.git)
-   cd run-shortcut
-
-
-
-2. **Make it executable:**
+1. **Dependencies**:
 ```bash
-chmod +x run-shortcut
+# For Wayland support
+sudo apt install ydotool
+# For OSD visual cues
+sudo apt install xosd-bin
 
 ```
 
 
-3. **Install it globally:**
+2. **Global Setup**:
+Run the install flag from your project directory. This copies the binary to `/usr/local/bin` and configures hardware permissions.
 ```bash
 ./run-shortcut --install
 
 ```
 
 
-*(This copies the script to `/usr/local/bin/run-shortcut`. It will prompt for your `sudo` password if required.)*
+*Note: A reboot is required after the first installation to apply the new `uinput` hardware rules.*
 
-### Uninstallation
+---
 
-To remove the tool from your system, simply run:
+## ⌨️ CLI Usage
+
+| Flag | Description |
+| --- | --- |
+| `--osd` | Show the red "⚡ MACRO" overlay on the bottom right. |
+| `-d <ms>` | Initial delay. Crucial for letting GUI menus close before typing. |
+| `-m <X> <Y>` | Move the mouse to absolute coordinates. |
+| `-c <1|2|3>` | Click mouse button (1=Left, 2=Middle, 3=Right). |
+| `-aw <ms>` | Autowait: Pause between specific key/mouse events. |
+| `-v` | Verbose mode: Debug environment and socket info. |
+
+**Example Command:**
 
 ```bash
-run-shortcut --uninstall
+run-shortcut --osd -d 1000 -m 500 500 -c 1 "ctrl alt t"
 
 ```
 
-## 🖥️ Desktop Integration (App Launchers)
+---
 
-You can turn any macro into a clickable desktop application that appears in your system search bar (like the Pop!_OS Launcher).
+## 🖥 Launcher Management (Dock Macros)
 
-### Create a Launcher
+Create a persistent shortcut that appears in your Pop!_OS launcher or dock:
 
-The `--make-launcher` command requires exactly **3 arguments**: `"Name"` `"-flags"` `"keys"`.
-*(If you do not want to pass any flags, you must provide an empty string `""`).*
-
-**Example with a delay (Recommended so the launcher loses focus before typing):**
+**Create:**
 
 ```bash
-run-shortcut --make-launcher "Paste" "-d 2000" "ctrl v"
+run-shortcut --make-launcher "Speak Text" "--osd -d 2000" "alt o"
 
 ```
 
-**Example without flags:**
-
-```bash
-run-shortcut --make-launcher "Quick Refresh" "" "ctrl r"
-
-```
-
-### Manage Launchers
-
-To see a list of all custom launchers created by this tool and their IDs:
+**List & Remove:**
 
 ```bash
 run-shortcut --list-launchers
+run-shortcut --remove-launcher "speak-text"
 
 ```
 
-To delete a launcher from your system:
+---
 
-```bash
-run-shortcut --remove-launcher paste
+## 📂 Infrastructure Layout
 
-```
+* **Binary**: `/usr/local/bin/run-shortcut`
+* **Wrappers**: `~/.local/bin/rs-wrap-*` (Handles environment bridging)
+* **Launchers**: `~/.local/share/applications/rs-*.desktop`
+* **Logs**: `/tmp/rs-*.log` (Check these if a dock icon fails)
 
-## 🛠 Usage (CLI)
-
-The script takes a single string argument consisting of key names separated by spaces. Modifiers (e.g. `ctrl`, `alt`, `shift`) are held while the final key is pressed.
-
-### Basic Shortcut
-
-```bash
-run-shortcut "ctrl o"
-
-```
-
-### With Delay (2 second wait before executing)
-
-Useful if you need time to switch window focus before the macro fires:
-
-```bash
-run-shortcut -d 2000 "ctrl alt space"
-
-```
-
-### Human-like Randomized Typing
-
-Add a random delay between 20ms and 100ms between every key event to simulate a human user:
-
-```bash
-run-shortcut -raw 20,100 "ctrl shift t"
-
-```
-
-### Focus Wait
-
-Pause and wait for manual confirmation (pressing Enter in the terminal) before firing the keystrokes:
-
-```bash
-run-shortcut --focus-wait "super d"
-
-```
-
-### Debugging & Verbose Mode
-
-If a shortcut isn't firing, use `-v` to see exactly which backend tool and keycodes are being used, as well as version detection:
-
-```bash
-run-shortcut -v "ctrl l"
-
-```
+---
 
 ## 🗺 Future Roadmap
 
-* **Sequence Support (Multi-Step Macros):** Handle semicolon-separated strings (e.g., `"ctrl l; type 'https://kapcode.io'; enter"`).
-* **Active Window Targeting:** Add `--window <name>` flag to focus specific windows before firing keys.
-* **Virtual Input Device Management:** Logic to auto-start `ydotoold` if not running.
-* **Environment Variable Overrides:** Support `RS_TOOL` overrides in `.bashrc`.
-* **Standard Input (Pipe) Mode:** Allow reading keys from pipe (e.g., `echo "ctrl c" | run-shortcut -`).
-* **Recording Module:** A `--record` flag to capture input and generate shortcut strings.
-* **Profile Support:** Load complex macros from JSON/YAML files.
+* [ ] **Recording Mode**: Add `--record` to capture live mouse coordinates and clicks.
+* [ ] **Sequence Support**: Handle semicolon-separated commands in one string.
+* [ ] **Window Targeting**: Force focus on specific app titles before firing.
+* [ ] **Native OSD**: A Go/Python-based overlay for pure Wayland environments.
 
-## ⚠️ Requirements
-
-* **X11:** Requires `xdotool` (`sudo apt install xdotool`)
-* **Wayland:** Requires `ydotool` and the `ydotoold` daemon running (`sudo apt install ydotool`)
-
-## 📄 License
-
-MIT
-
-```
-
-```
+---
