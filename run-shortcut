@@ -1,53 +1,94 @@
 #!/bin/bash
 # run-shortcut - Universal Macro Engine for Kapcode Infrastructure
-# Version: 1.6.0 (Smart Monitor Probing & Dynamic HUD Indent)
+# Version: 1.9.1 (Management Shielding Fix)
 
 SCRIPT_NAME=$(basename "$0")
 [ "$SCRIPT_NAME" != "run-shortcut" ] && { echo "❌ Error: Rename to 'run-shortcut'"; exit 1; }
 
 TARGET_BIN="/usr/local/bin/run-shortcut"
+LAUNCHER_DIR="$HOME/.local/share/applications"
+WRAPPER_DIR="$HOME/.local/bin"
 
-# --- 1. MONITOR PROBING ---
-get_monitor_info() {
-    # Probes Wayland for active monitor dimensions
-    if command -v wlrctl >/dev/null 2>&1; then
-        # Extracts width of the primary/active surface
-        wlrctl toplevel list | grep -oP '\d+x\d+' | head -n1 | cut -d'x' -f1
-    else
-        # Fallback to a standard 1080p width if probing fails
-        echo "1920"
+# --- 1. THE HUD ENGINE (Balanced Padding) ---
+show_hud() {
+    local msg="$1"
+    if [[ "$use_osd" -eq 1 ]] && command -v osd_cat >/dev/null 2>&1; then
+        [[ -z "$DISPLAY" ]] && export DISPLAY=$(ls /tmp/.X11-unix/X* 2>/dev/null | head -n1 | sed 's/.*X/:/')
+        local padded_label="    [Kapcode] ⚡ $msg    " 
+        char_count=${#padded_label}
+        screen_width=$(xrandr 2>/dev/null | grep '*' | head -n1 | awk '{print $1}' | cut -d'x' -f1 || echo "1920")
+        dynamic_indent=$((screen_width - (char_count * 12) - 80))
+        (echo "$padded_label" | osd_cat --pos=bottom --align=left --offset=45 --indent=$dynamic_indent \
+            --colour="$hud_color" --shadow=2 --outline=1 --lines=1 \
+            --font="-*-fixed-bold-r-*-*-18-*-*-*-*-*-*-*" --delay=2) &
     fi
 }
 
-# --- 2. RECORDING MODE ---
-if [[ "$1" == "--record" ]]; then
-    echo -e "\033[0;33m⏺️  Kapcode Recorder: Capture click coordinates\033[0m"
-    if [ -n "$WAYLAND_DISPLAY" ]; then
-        echo "Wayland (Pop!_OS) detected. Probing libinput..."
-        sudo libinput debug-events --show-keycodes | stdbuf -oL grep "POINTER_BUTTON" | while read -r line; do
-            echo -e "\033[0;32mClick Detected!\033[0m"
-            echo "Use 'wlrctl pointer move' output for exact target."
-        done
-    else
-        watch -n 0.1 "xdotool getmouselocation --shell"
-    fi
-    exit 0
+# --- 2. PRIORITY MANAGEMENT (Exit Early) ---
+do_uninstall() {
+    echo -e "\033[0;34mCleaning environment...\033[0m"
+    rm -f "$LAUNCHER_DIR"/rs-*.desktop
+    rm -f "$WRAPPER_DIR"/rs-wrap-*
+    sudo rm -f "$TARGET_BIN" "/etc/udev/rules.d/80-run-shortcut-uinput.rules"
+    echo "✅ Cleaned."
+}
+
+if [[ "$1" == "--uninstall" ]]; then do_uninstall; exit 0; fi
+
+if [[ "$1" == "--install" ]]; then
+    sudo cp "$0" "$TARGET_BIN" && sudo chmod +x "$TARGET_BIN"
+    echo 'KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee "/etc/udev/rules.d/80-run-shortcut-uinput.rules" > /dev/null
+    ! groups "$USER" | grep -q "\binput\b" && sudo usermod -aG input "$USER"
+    echo "✅ Installed."; exit 0
 fi
 
-# --- 3. MANAGEMENT ---
 if [[ "$1" == "--reinstall" ]]; then
     SOURCE_SCRIPT=$(realpath "$0")
-    sudo rm -f "$TARGET_BIN"
+    do_uninstall
     sudo cp "$SOURCE_SCRIPT" "$TARGET_BIN" && sudo chmod +x "$TARGET_BIN"
     echo "✅ Reinstall Successful."; exit 0
 fi
 
-# --- 4. EXECUTION LOGIC ---
+if [[ "$1" == "--make-launcher" ]]; then
+    APP_NAME="$2"; APP_FLAGS="$3"; APP_KEYS="$4"
+    mkdir -p "$LAUNCHER_DIR" "$WRAPPER_DIR"
+    ID=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
+    WRAPPER="$WRAPPER_DIR/rs-wrap-$ID"
+    cat <<EOF > "$WRAPPER"
+#!/bin/bash -l
+exec > "/tmp/rs-$ID.log" 2>&1
+[ -z "\$DISPLAY" ] && export DISPLAY=\$(ls /tmp/.X11-unix/X* | head -n1 | sed 's/.*X/:/')
+[ -S "/tmp/.ydotool_socket" ] && export YDOTOOL_SOCKET="/tmp/.ydotool_socket"
+$TARGET_BIN $APP_FLAGS "$APP_KEYS"
+EOF
+    chmod +x "$WRAPPER"
+    cat <<EOF > "$LAUNCHER_DIR/rs-$ID.desktop"
+[Desktop Entry]
+Type=Application
+Name=$APP_NAME
+Exec=$WRAPPER
+Icon=input-keyboard
+Terminal=false
+Categories=Utility;Automation;
+EOF
+    update-desktop-database "$LAUNCHER_DIR"
+    echo "✅ Created Launcher: $APP_NAME"; exit 0
+fi
+
+if [[ "$1" == "--remove-launcher" ]]; then
+    ID=$(echo "$2" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
+    rm -f "$LAUNCHER_DIR/rs-$ID.desktop" "$WRAPPER_DIR/rs-wrap-$ID"
+    echo "✅ Removed: $ID"; exit 0
+fi
+
+# --- 3. EXECUTION LOGIC ---
 [ -z "$WAYLAND_DISPLAY" ] && tool="xdotool" || tool="ydotool"
-delay=0; use_osd=0; mouse_x=""; mouse_y=""; mouse_click=""; hud_color="#00FFFF"
+delay=0; use_osd=0; use_record=0; hud_color="#00FFFF"
+mouse_x=""; mouse_y=""; mouse_click=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --record) use_record=1; shift ;;
         --osd) use_osd=1; shift ;;
         --color) hud_color="$2"; shift 2 ;;
         -m|--move) mouse_x="$2"; mouse_y="$3"; shift 3 ;;
@@ -57,32 +98,27 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# --- THE SMART HUD (The Width Fix) ---
-if [[ "$use_osd" -eq 1 ]] && command -v osd_cat >/dev/null 2>&1; then
-    # 1. Bridge Display for XWayland
-    [[ -z "$DISPLAY" ]] && export DISPLAY=$(ls /tmp/.X11-unix/X* | head -n1 | sed 's/.*X/:/')
-    
-    label="[Kapcode] ⚡ ${1:-"Action"}"
-    
-    # 2. Mathematical Indent Hack
-    # We calculate the indent based on character length to "push" the text to the right 
-    # without letting the background bar span the whole screen.
-    char_count=${#label}
-    font_width=12 # Approximate px per char for 'fixed' bold 18
-    text_width=$((char_count * font_width))
-    screen_width=$(get_monitor_info)
-    
-    # Right-side indent = Screen Width - Text Width - Margin
-    dynamic_indent=$((screen_width - text_width - 60))
-    
-    (echo "$label" | osd_cat --pos=bottom --align=left --offset=40 --indent=$dynamic_indent \
-        --colour="$hud_color" --shadow=2 --outline=1 --lines=1 \
-        --font="-*-fixed-bold-r-*-*-18-*-*-*-*-*-*-*" --delay=2) &
+# Deep Recorder Branch
+if [[ "$use_record" -eq 1 ]]; then
+    echo -e "\033[0;33m⏺️  Kapcode Deep Recorder Active.\033[0m"
+    sudo libinput debug-events --show-keycodes 2>/dev/null | stdbuf -oL grep "POINTER_BUTTON" | while read -r line; do
+        if echo "$line" | grep -q "pressed"; then
+            X=$(xdotool getmouselocation 2>/dev/null | grep -oP 'x:\K\d+')
+            Y=$(xdotool getmouselocation 2>/dev/null | grep -oP 'y:\K\d+')
+            if [ -n "$X" ]; then
+                echo -e "\033[0;32m[CAPTURED] X=$X, Y=$Y\033[0m"
+                show_hud "$X, $Y"
+                echo "run-shortcut -m $X $Y -c 1"
+            fi
+        fi
+    done
+    exit 0
 fi
 
-# --- CORE ACTIONS ---
+# Standard Execution
 [[ "$tool" == "ydotool" ]] && { pgrep -x "ydotoold" >/dev/null || { nohup ydotoold >/dev/null 2>&1 & sleep 0.5; }; }
-
+shortcut="$1"
+[ -n "$shortcut" ] && show_hud "$shortcut"
 [ "$delay" -gt 0 ] && sleep "$(awk "BEGIN {print $delay/1000}")"
 
 [ -n "$mouse_x" ] && { [[ "$tool" = "xdotool" ]] && xdotool mousemove "$mouse_x" "$mouse_y" || ydotool move "$mouse_x" "$mouse_y"; }
@@ -94,49 +130,8 @@ if [ -n "$mouse_click" ]; then
     fi
 fi
 
-# Key Execution Logic... (Standard Sequence)
-# --- 4. EXECUTION LOGIC ---
-[ -z "$WAYLAND_DISPLAY" ] && tool="xdotool" || tool="ydotool"
-delay=0; use_osd=0; mouse_x=""; mouse_y=""; mouse_click=""; hud_color="#00FFFF"
-
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --osd) use_osd=1; shift ;;
-        --color) hud_color="$2"; shift 2 ;;
-        -m|--move) mouse_x="$2"; mouse_y="$3"; shift 3 ;;
-        -c|--click) mouse_click="$2"; shift 2 ;;
-        -d|--delay) delay="$2"; shift 2 ;;
-        *) break ;;
-    esac
-done
-
-[[ "$tool" == "ydotool" ]] && { pgrep -x "ydotoold" >/dev/null || { nohup ydotoold >/dev/null 2>&1 & sleep 0.5; }; }
-
-shortcut="$1"
+# Keyboard Sequence
 read -ra keys <<< "$shortcut"
-
-# --- THE KAPCODE HUD (Strict Floating Style) ---
-if [[ "$use_osd" -eq 1 ]] && command -v osd_cat >/dev/null 2>&1; then
-    [[ -z "$DISPLAY" ]] && export DISPLAY=$(ls /tmp/.X11-unix/X* | head -n1 | sed 's/.*X/:/')
-    
-    label="${shortcut:-"Action"}"
-    # FIX: Explicitly setting outline and shadow while ensuring no background flags are passed.
-    # Align Left + Pos Bottom + Outline = Floating text effect.
-    (echo "[Kapcode] ⚡ $label" | osd_cat --pos=bottom --align=left --offset=40 --indent=40 \
-        --colour="$hud_color" --shadow=2 --outline=1 --lines=1 \
-        --font="-*-fixed-bold-r-*-*-20-*-*-*-*-*-*-*" --delay=2) &
-fi
-
-[ "$delay" -gt 0 ] && sleep "$(awk "BEGIN {print $delay/1000}")"
-
-# Execute Mouse/Key Logic
-[ -n "$mouse_x" ] && { [[ "$tool" = "xdotool" ]] && xdotool mousemove "$mouse_x" "$mouse_y" || ydotool move "$mouse_x" "$mouse_y"; }
-if [ -n "$mouse_click" ]; then
-    [[ "$tool" == "xdotool" ]] && xdotool click "$mouse_click" || {
-        case "$mouse_click" in 1) b="0xC0";; 2) b="0xC2";; 3) b="0xC1";; esac
-        ydotool click "$b"
-    }
-fi
 if [ ${#keys[@]} -gt 0 ]; then
     if [[ "$tool" == "ydotool" ]]; then
         seq=""; for k in "${keys[@]}"; do [ -z "$seq" ] && seq="$k" || seq="$seq+$k"; done
