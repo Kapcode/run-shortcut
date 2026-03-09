@@ -6,7 +6,7 @@ SCRIPT_NAME=$(basename "$0")
 if [ "$SCRIPT_NAME" != "run-shortcut" ]; then
     echo "❌ Error: Invalid filename detected ('$SCRIPT_NAME')." >&2
     echo "This tool must be named exactly 'run-shortcut' (no .sh extension) to run." >&2
-    echo "Please rename the file: mv \"$0\" \"$(dirname "$0")/run-shortcut\"" >&2
+    echo "Please rename the file: mv \"$0\" \"$(dirname \"$0\")/run-shortcut\"" >&2
     exit 1
 fi
 # ---------------------------------
@@ -43,6 +43,99 @@ if [ "$1" = "--uninstall" ]; then
 fi
 # --- END INSTALLATION LOGIC ---
 
+# --- LAUNCHER MANAGEMENT ---
+LAUNCHER_DIR="$HOME/.local/share/applications"
+
+if [ "$1" = "--make-launcher" ]; then
+    # Require exactly 3 arguments after the flag ($2, $3, $4)
+    if [ $# -lt 4 ]; then
+        echo "❌ Error: Missing arguments." >&2
+        echo "Usage: run-shortcut --make-launcher \"Name\" \"-flags\" \"keys\"" >&2
+        echo "       (Pass an empty string \"\" for flags if none are needed)" >&2
+        echo "Example: run-shortcut --make-launcher \"My App\" \"-d 2000\" \"ctrl o\"" >&2
+        exit 1
+    fi
+
+    APP_NAME="$2"
+    APP_FLAGS="$3"
+    APP_KEYS="$4"
+    
+    mkdir -p "$LAUNCHER_DIR"
+    
+    # Create a safe filename (e.g. "My App" -> "rs-my-app.desktop")
+    SAFE_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
+    FILE_PATH="$LAUNCHER_DIR/rs-$SAFE_NAME.desktop"
+
+    # Safely construct the Exec command
+    if [ -n "$APP_FLAGS" ]; then
+        EXEC_CMD="/usr/local/bin/run-shortcut $APP_FLAGS \"$APP_KEYS\""
+    else
+        EXEC_CMD="/usr/local/bin/run-shortcut \"$APP_KEYS\""
+    fi
+
+    cat <<EOF > "$FILE_PATH"
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=$APP_NAME
+Comment=Run keyboard shortcut: $APP_KEYS
+Exec=$EXEC_CMD
+Icon=input-keyboard
+Terminal=false
+Categories=Utility;Automation;
+EOF
+    
+    chmod +x "$FILE_PATH"
+    echo "✅ Created launcher: '$APP_NAME'"
+    echo "   File saved as rs-$SAFE_NAME.desktop"
+    echo "   Command: $EXEC_CMD"
+    echo "   You can now find it in your system search bar."
+    exit 0
+fi
+
+if [ "$1" = "--list-launchers" ]; then
+    echo "Desktop Launchers Managed by run-shortcut:"
+    echo "------------------------------------------"
+    found=0
+    for f in "$LAUNCHER_DIR"/rs-*.desktop; do
+        [ -e "$f" ] || continue
+        found=1
+        display_name=$(grep '^Name=' "$f" | cut -d= -f2)
+        keys=$(grep '^Exec=' "$f" | awk -F'"' '{print $2}')
+        safe_id=$(basename "$f" | sed 's/^rs-//;s/\.desktop$//')
+        
+        echo "• $display_name"
+        echo "  ID:   $safe_id (Use this to remove)"
+        echo "  Cmd:  $keys"
+        echo ""
+    done
+    
+    if [ $found -eq 0 ]; then
+        echo "No launchers found."
+    fi
+    exit 0
+fi
+
+if [ "$1" = "--remove-launcher" ]; then
+    if [ -z "$2" ]; then
+        echo "❌ Error: Please provide the ID of the launcher to remove." >&2
+        echo "Use run-shortcut --list-launchers to see available IDs." >&2
+        exit 1
+    fi
+    
+    TARGET_NAME=$(echo "$2" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
+    FILE_PATH="$LAUNCHER_DIR/rs-$TARGET_NAME.desktop"
+    
+    if [ -f "$FILE_PATH" ]; then
+        rm "$FILE_PATH"
+        echo "✅ Removed launcher: $TARGET_NAME"
+    else
+        echo "❌ Error: Launcher '$TARGET_NAME' not found." >&2
+    fi
+    exit 0
+fi
+# --- END LAUNCHER MANAGEMENT ---
+
 if [ -z "$BASH_VERSION" ]; then
     echo "This script requires bash; please invoke with 'bash $0'" >&2
     exit 1
@@ -52,22 +145,26 @@ print_usage() {
     cat <<'EOF'
 Usage: run-shortcut [options] "<shortcut>"
 
-Installation:
-    --install                Copy this script to /usr/local/bin/run-shortcut
-    --uninstall              Remove run-shortcut from /usr/local/bin
+Installation & Management:
+    --install                          Copy this script to /usr/local/bin/run-shortcut
+    --uninstall                        Remove run-shortcut from /usr/local/bin
+    --make-launcher "Name" "Flg" "Key" Create a desktop app launcher for a shortcut
+    --list-launchers                   List all desktop launchers created by this tool
+    --remove-launcher <ID>             Remove a specific desktop launcher
 
 Options:
-    -h, --help               Show this help message and exit
-    -v, --verbose            Print debug output
-    --tool TOOL              Tool to use: xdotool or ydotool (auto-detected)
-    --focus-wait             Pause and wait for Enter before sending keys
-    -d <ms>                  Fixed delay before executing the shortcut (ms)
-    -rd <min>,<max>          Random delay before execution (ms)
-    -aw <ms> or -w <ms>      Fixed autowait between key events (ms)
-    -raw <min>,<max>         Random autowait between key events (ms)
+    -h, --help                         Show this help message and exit
+    -v, --verbose                      Print debug output
+    --tool TOOL                        Tool to use: xdotool or ydotool (auto-detected)
+    --focus-wait                       Pause and wait for Enter before sending keys
+    -d <ms>                            Fixed delay before executing the shortcut (ms)
+    -rd <min>,<max>                    Random delay before execution (ms)
+    -aw <ms> or -w <ms>                Fixed autowait between key events (ms)
+    -raw <min>,<max>                   Random autowait between key events (ms)
 
 Example: run-shortcut -d 1000 -aw 50 "ctrl alt space"
-         run-shortcut --focus-wait "o"
+         run-shortcut --make-launcher "Paste" "-d 2000" "ctrl v"
+         run-shortcut --make-launcher "Quick Refresh" "" "ctrl r"
 EOF
 }
 
