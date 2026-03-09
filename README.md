@@ -1,6 +1,6 @@
 ---
 
-# ⚡ Kapcode run-shortcut
+#  Kapcode run-shortcut
 
 **The Universal Linux Macro Engine**
 
