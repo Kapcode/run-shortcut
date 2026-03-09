@@ -23,8 +23,6 @@ The easiest way to use `run-shortcut` is to install it globally on your system.
    git clone [https://github.com/kapcode/run-shortcut.git](https://github.com/kapcode/run-shortcut.git)
    cd run-shortcut
 
-
-
 2. **Make it executable:**
 ```bash
 chmod +x run-shortcut
@@ -97,6 +95,16 @@ run-shortcut -v "ctrl l"
 
 ```
 
+## 🗺 Future Roadmap
+
+* **Sequence Support (Multi-Step Macros):** Handle semicolon-separated strings (e.g., `"ctrl l; type 'https://kapcode.io'; enter"`).
+* **Active Window Targeting:** Add `--window <name>` flag to focus specific windows before firing keys.
+* **Virtual Input Device Management:** Logic to auto-start `ydotoold` if not running.
+* **Environment Variable Overrides:** Support `RS_TOOL` overrides in `.bashrc`.
+* **Standard Input (Pipe) Mode:** Allow reading keys from pipe (e.g., `echo "ctrl c" | run-shortcut -`).
+* **Recording Module:** A `--record` flag to capture input and generate shortcut strings.
+* **Profile Support:** Load complex macros from JSON/YAML files.
+
 ## ⚠️ Requirements
 
 * **X11:** Requires `xdotool` (`sudo apt install xdotool`)
@@ -105,3 +113,8 @@ run-shortcut -v "ctrl l"
 ## 📄 License
 
 MIT
+
+```
+http-no-link-yet
+
+```
