@@ -1,4 +1,4 @@
-```markdown
+
 # run-shortcut
 
 A universal, cross-platform keyboard shortcut emulator for Linux. `run-shortcut` automatically detects whether you are running **X11** or **Wayland** and routes keystrokes through `xdotool` or `ydotool` accordingly.
@@ -23,7 +23,7 @@ The easiest way to use `run-shortcut` is to install it globally on your system.
    git clone [https://github.com/kapcode/run-shortcut.git](https://github.com/kapcode/run-shortcut.git)
    cd run-shortcut
 
-```
+
 
 2. **Make it executable:**
 ```bash
