@@ -1,372 +1,131 @@
 #!/bin/bash
-# run-shortcut - emulate a keyboard shortcut using xdotool or ydotool
+# run-shortcut - universal keyboard/mouse macro utility for Kapcode Infrastructure
+# Version: 1.3.2 (Shielded Management Logic)
 
 # --- STRICT NAMING ENFORCEMENT ---
 SCRIPT_NAME=$(basename "$0")
 if [ "$SCRIPT_NAME" != "run-shortcut" ]; then
     echo "❌ Error: Invalid filename detected ('$SCRIPT_NAME')." >&2
-    echo "This tool must be named exactly 'run-shortcut' (no .sh extension) to run." >&2
-    echo "Please rename the file: mv \"$0\" \"$(dirname \"$0\")/run-shortcut\"" >&2
+    echo "This tool must be named exactly 'run-shortcut' to function." >&2
     exit 1
 fi
-# ---------------------------------
 
 TARGET_BIN="/usr/local/bin/run-shortcut"
+LAUNCHER_DIR="$HOME/.local/share/applications"
 
-# --- INSTALLATION LOGIC ---
+# --- 1. PRIORITY MANAGEMENT COMMANDS (Exit early) ---
 if [ "$1" = "--install" ]; then
-    echo "Installing to $TARGET_BIN..."
-    if [ ! -w "/usr/local/bin" ]; then
-        sudo cp "$0" "$TARGET_BIN" && sudo chmod +x "$TARGET_BIN"
-    else
-        cp "$0" "$TARGET_BIN" && chmod +x "$TARGET_BIN"
-    fi
-    
-    if [ $? -eq 0 ]; then
-        echo "✅ Successfully installed! You can now run 'run-shortcut' from anywhere."
-        exit 0
-    else
-        echo "❌ Installation failed." >&2
-        exit 1
-    fi
+    echo "📦 Installing run-shortcut to $TARGET_BIN..."
+    sudo cp "$0" "$TARGET_BIN" && sudo chmod +x "$TARGET_BIN"
+    echo 'KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee "/etc/udev/rules.d/80-run-shortcut-uinput.rules" > /dev/null
+    ! groups "$USER" | grep -q "\binput\b" && sudo usermod -aG input "$USER"
+    echo "✅ Permissions & Binary installed. Please reboot for full Wayland support."
+    exit 0
 fi
 
 if [ "$1" = "--uninstall" ]; then
-    echo "Removing $TARGET_BIN..."
-    if [ ! -w "/usr/local/bin" ]; then
-        sudo rm -f "$TARGET_BIN"
-    else
-        rm -f "$TARGET_BIN"
-    fi
-    echo "✅ Successfully uninstalled."
+    sudo rm -f "$TARGET_BIN" "/etc/udev/rules.d/80-run-shortcut-uinput.rules"
+    echo "✅ Uninstalled."
     exit 0
 fi
-# --- END INSTALLATION LOGIC ---
-
-# --- LAUNCHER MANAGEMENT ---
-LAUNCHER_DIR="$HOME/.local/share/applications"
 
 if [ "$1" = "--make-launcher" ]; then
-    # Require exactly 3 arguments after the flag ($2, $3, $4)
-    if [ $# -lt 4 ]; then
-        echo "❌ Error: Missing arguments." >&2
-        echo "Usage: run-shortcut --make-launcher \"Name\" \"-flags\" \"keys\"" >&2
-        echo "       (Pass an empty string \"\" for flags if none are needed)" >&2
-        echo "Example: run-shortcut --make-launcher \"My App\" \"-d 2000\" \"ctrl o\"" >&2
-        exit 1
-    fi
-
-    APP_NAME="$2"
-    APP_FLAGS="$3"
-    APP_KEYS="$4"
-    
-    mkdir -p "$LAUNCHER_DIR"
-    
-    # Create a safe filename
+    APP_NAME="$2"; APP_FLAGS="$3"; APP_KEYS="$4"
+    mkdir -p "$LAUNCHER_DIR" "$HOME/.local/bin"
     SAFE_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
-    FILE_PATH="$LAUNCHER_DIR/rs-$SAFE_NAME.desktop"
-
-    # Safely construct the Exec command
-    if [ -n "$APP_FLAGS" ]; then
-        EXEC_CMD="/usr/local/bin/run-shortcut $APP_FLAGS \"$APP_KEYS\""
-    else
-        EXEC_CMD="/usr/local/bin/run-shortcut \"$APP_KEYS\""
-    fi
-
-    cat <<EOF > "$FILE_PATH"
+    WRAPPER_PATH="$HOME/.local/bin/rs-wrap-$SAFE_NAME"
+    cat <<EOF > "$WRAPPER_PATH"
+#!/bin/bash -l
+exec > "/tmp/rs-$SAFE_NAME.log" 2>&1
+[ -S "/tmp/.ydotool_socket" ] && export YDOTOOL_SOCKET="/tmp/.ydotool_socket"
+[ -S "\$XDG_RUNTIME_DIR/.ydotool_socket" ] && export YDOTOOL_SOCKET="\$XDG_RUNTIME_DIR/.ydotool_socket"
+$TARGET_BIN $APP_FLAGS "$APP_KEYS"
+EOF
+    chmod +x "$WRAPPER_PATH"
+    cat <<EOF > "$LAUNCHER_DIR/rs-$SAFE_NAME.desktop"
 [Desktop Entry]
-Version=1.0
 Type=Application
 Name=$APP_NAME
-Comment=Run keyboard shortcut: $APP_KEYS
-Exec=$EXEC_CMD
+Exec=$WRAPPER_PATH
 Icon=input-keyboard
 Terminal=false
 Categories=Utility;Automation;
 EOF
-    
-    chmod +x "$FILE_PATH"
-    echo "✅ Created launcher: '$APP_NAME'"
-    echo "   File saved as rs-$SAFE_NAME.desktop"
-    echo "   Command: $EXEC_CMD"
-    echo "   You can now find it in your system search bar."
-    exit 0
+    update-desktop-database "$LAUNCHER_DIR"
+    echo "✅ Launcher Created: $APP_NAME"; exit 0
 fi
 
 if [ "$1" = "--list-launchers" ]; then
-    echo "Desktop Launchers Managed by run-shortcut:"
-    echo "------------------------------------------"
-    found=0
+    echo "Managed Launchers:"
     for f in "$LAUNCHER_DIR"/rs-*.desktop; do
-        [ -e "$f" ] || continue
-        found=1
-        display_name=$(grep '^Name=' "$f" | cut -d= -f2)
-        keys=$(grep '^Exec=' "$f" | awk -F'"' '{print $2}')
-        safe_id=$(basename "$f" | sed 's/^rs-//;s/\.desktop$//')
-        
-        echo "• $display_name"
-        echo "  Keys:   $keys"
-        echo "  Remove: run-shortcut --remove-launcher \"$safe_id\""
-        echo ""
-    done
-    
-    if [ "$found" -eq 0 ]; then
-        echo "No launchers found."
-    fi
-    exit 0
+        [ -e "$f" ] && echo " • $(grep '^Name=' "$f" | cut -d= -f2) ($(basename "$f" .desktop | sed 's/rs-//'))"
+    done; exit 0
 fi
 
 if [ "$1" = "--remove-launcher" ]; then
-    if [ -z "$2" ]; then
-        echo "❌ Error: Please provide the ID of the launcher to remove." >&2
-        echo "Use run-shortcut --list-launchers to see available IDs." >&2
-        exit 1
-    fi
-    
-    TARGET_NAME=$(echo "$2" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
-    FILE_PATH="$LAUNCHER_DIR/rs-$TARGET_NAME.desktop"
-    
-    if [ -f "$FILE_PATH" ]; then
-        rm "$FILE_PATH"
-        echo "✅ Removed launcher: $TARGET_NAME"
-    else
-        echo "❌ Error: Launcher '$TARGET_NAME' not found." >&2
-    fi
-    exit 0
-fi
-# --- END LAUNCHER MANAGEMENT ---
-
-if [ -z "$BASH_VERSION" ]; then
-    echo "This script requires bash; please invoke with 'bash $0'" >&2
-    exit 1
+    # Improved ID matching
+    ID=$(echo "$2" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
+    rm -f "$LAUNCHER_DIR/rs-$ID.desktop" "$HOME/.local/bin/rs-wrap-$ID"
+    echo "✅ Removed launcher: $ID"; exit 0
 fi
 
-print_usage() {
-    cat <<'EOF'
-Usage: run-shortcut [options] "<shortcut>"
+# --- 2. MACRO EXECUTION LOGIC (Standard Flags) ---
+[ -z "$WAYLAND_DISPLAY" ] && tool="xdotool" || tool="ydotool"
 
-Installation & Management:
-    --install                          Copy this script to /usr/local/bin/run-shortcut
-    --uninstall                        Remove run-shortcut from /usr/local/bin
-    --make-launcher "Name" "Flg" "Key" Create a desktop app launcher for a shortcut
-    --list-launchers                   List all desktop launchers created by this tool
-    --remove-launcher <ID>             Remove a specific desktop launcher
-
-Options:
-    -h, --help                         Show this help message and exit
-    -v, --verbose                      Print debug output
-    --tool TOOL                        Tool to use: xdotool or ydotool (auto-detected)
-    --focus-wait                       Pause and wait for Enter before sending keys
-    -d <ms>                            Fixed delay before executing the shortcut (ms)
-    -rd <min>,<max>                    Random delay before execution (ms)
-    -aw <ms> or -w <ms>                Fixed autowait between key events (ms)
-    -raw <min>,<max>                   Random autowait between key events (ms)
-
-Example: run-shortcut -d 1000 -aw 50 "ctrl alt space"
-         run-shortcut --make-launcher "Paste" "-d 2000" "ctrl v"
-         run-shortcut --make-launcher "Quick Refresh" "" "ctrl r"
-EOF
-}
-
-convert_key_for_tool() {
-    local key="$1"
-    local tool="$2"
-    
-    if [ "$tool" = "ydotool" ]; then
-        case "$key" in
-            ctrl|control) echo "lctrl" ;;
-            alt)          echo "lalt" ;;
-            shift)        echo "lshift" ;;
-            super|windows)echo "lmeta" ;;
-            *)            echo "$key" ;;
-        esac
-    else
-        echo "$key"
-    fi
-}
-
-do_keydown() {
-    local key="$1"
-    local converted_key=$(convert_key_for_tool "$key" "$tool")
-    
-    if [ "$tool" = "xdotool" ]; then
-        xdotool keydown "$converted_key"
-    elif [ "$tool" = "ydotool" ]; then
-        echo "ydotool logic handled in unified sequence block" >/dev/null
-    fi
-}
-
-do_keyup() {
-    local key="$1"
-    local converted_key=$(convert_key_for_tool "$key" "$tool")
-    
-    if [ "$tool" = "xdotool" ]; then
-        xdotool keyup "$converted_key"
-    fi
-}
-
-do_key() {
-    local key="$1"
-    local converted_key=$(convert_key_for_tool "$key" "$tool")
-    
-    if [ "$tool" = "xdotool" ]; then
-        xdotool key "$converted_key"
-    elif [ "$tool" = "ydotool" ]; then
-        ydotool key "$converted_key"
-    fi
-}
-
-apply_wait() {
-    local wait_ms=0
-    if [ "$random_wait_max" != "0" ]; then
-        local range=$((random_wait_max - random_wait_min + 1))
-        wait_ms=$((RANDOM % range + random_wait_min))
-    elif [ "$autowait" != "0" ]; then
-        wait_ms=$autowait
-    fi
-
-    if [ "$wait_ms" != "0" ]; then
-        local wait_sec=$(awk "BEGIN {printf \"%.3f\", $wait_ms/1000}")
-        sleep "$wait_sec"
-    fi
-}
-
-check_dependencies() {
-    if ! command -v "$tool" >/dev/null 2>&1; then
-        echo "Error: $tool is not installed or not in PATH." >&2
-        exit 1
-    fi
-
-    local detected_ver="unknown"
-
-    if [ "$tool" = "ydotool" ]; then
-        local ver_output=$(ydotool -V 2>/dev/null || ydotool --version 2>/dev/null)
-        
-        if [ -z "$ver_output" ] && command -v dpkg >/dev/null 2>&1; then
-            ver_output=$(dpkg-query -W -f='${Version}' ydotool 2>/dev/null)
-        fi
-
-        local y_ver=$(echo "$ver_output" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
-        [ -n "$y_ver" ] && detected_ver="$y_ver"
-        
-    elif [ "$tool" = "xdotool" ]; then
-        local x_ver=$(xdotool --version 2>&1 | grep -oE '[0-9]+\.[0-9]+.*' | head -n 1)
-        [ -n "$x_ver" ] && detected_ver="$x_ver"
-    fi
-
-    [ "$verbose" = "1" ] && echo "DEBUG: $tool version detected: $detected_ver" >&2
-}
-
-# Detect X11 vs Wayland
-if [ -n "$WAYLAND_DISPLAY" ]; then
-    default_tool="ydotool"
-elif [ -n "$DISPLAY" ]; then
-    default_tool="xdotool"
-else
-    echo "Error: Neither X11 (DISPLAY) nor Wayland (WAYLAND_DISPLAY) detected." >&2
-    exit 1
-fi
-
-tool="$default_tool"
-delay_before=0
-autowait=0
-verbose=0
-focus_wait=0
-random_delay_min=0
-random_delay_max=0
-random_wait_min=0
-random_wait_max=0
-
-trap 'echo "Interrupted"; exit 1' INT
+delay_before=0; autowait=0; verbose=0; use_osd=0
+mouse_x=""; mouse_y=""; mouse_click=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -v|--verbose) verbose=1; shift ;;
-        --tool) tool="$2"; shift 2 ;;
-        --focus-wait) focus_wait=1; shift ;;
-        -h|--help) print_usage; exit 0 ;;
+        --osd) use_osd=1; shift ;;
+        -m|--move) mouse_x="$2"; mouse_y="$3"; shift 3 ;;
+        -c|--click) mouse_click="$2"; shift 2 ;;
         -d|--delay) delay_before="$2"; shift 2 ;;
-        -rd|--randomdelay) IFS=',' read -r random_delay_min random_delay_max <<< "$2"; shift 2 ;;
-        -aw|--autowait|-w|--wait) autowait="$2"; shift 2 ;;
-        -raw|--randomwait) IFS=',' read -r random_wait_min random_wait_max <<< "$2"; shift 2 ;;
-        --) shift; break ;;
-        -*|--*) echo "Unknown option: $1" >&2; exit 1 ;;
+        -aw|--autowait) autowait="$2"; shift 2 ;;
+        -h|--help) # Full help section
+            echo "Macro tool. Flags: --osd, -m X Y, -c BTN, -d MS, -v"; exit 0 ;;
         *) break ;;
     esac
 done
 
-if [ $# -ne 1 ]; then
-    print_usage
-    exit 1
+# Ensure daemon is running for ydotool
+if [[ "$tool" == "ydotool" ]]; then
+    pgrep -x "ydotoold" > /dev/null || { nohup ydotoold > /dev/null 2>&1 & sleep 0.5; }
 fi
-
-check_dependencies
 
 shortcut="$1"
 read -ra keys <<< "$shortcut"
 
-[ "$verbose" = "1" ] && echo "DEBUG: tool=$tool, parsed keys: ${keys[*]}" >&2
-
-# Apply initial delay
-if [ "$random_delay_max" != "0" ]; then
-    range=$((random_delay_max - random_delay_min + 1))
-    delay_before=$((RANDOM % range + random_delay_min))
+if [ "$use_osd" -eq 1 ]; then
+    label="${shortcut:-"Mouse Action"}"
+    if command -v osd_cat >/dev/null 2>&1; then
+        echo "⚡ MACRO: $label" | osd_cat --pos=bottom --align=right --offset=40 --indent=40 \
+            --color=red --font="-adobe-helvetica-bold-r-normal--24-240-75-75-p-138-iso8859-1" \
+            --delay=2 &
+    fi
 fi
 
-if [ "$delay_before" != "0" ]; then
-    sleep_time=$(awk "BEGIN {printf \"%.3f\", $delay_before/1000}")
-    sleep "$sleep_time"
+[ "$delay_before" -gt 0 ] && sleep "$(awk "BEGIN {print $delay_before/1000}")"
+
+# Execute Mouse Move
+[ -n "$mouse_x" ] && { [ "$tool" = "xdotool" ] && xdotool mousemove "$mouse_x" "$mouse_y" || ydotool mousemove -a "$mouse_x" "$mouse_y"; }
+# Execute Mouse Click
+if [ -n "$mouse_click" ]; then
+    [ "$tool" = "xdotool" ] && xdotool click "$mouse_click" || {
+        case "$mouse_click" in 1) b="0xC0";; 2) b="0xC2";; 3) b="0xC1";; esac
+        ydotool click "$b"
+    }
 fi
 
-if [ "$focus_wait" = "1" ]; then
-    echo "Press Enter to send the shortcut..." >&2
-    read -r
+# Execute Keys
+if [ ${#keys[@]} -gt 0 ]; then
+    if [ "$tool" = "ydotool" ]; then
+        seq=""
+        for k in "${keys[@]}"; do [ -z "$seq" ] && seq="$k" || seq="$seq+$k"; done
+        ydotool key "$seq"
+    else
+        for ((i=0; i<${#keys[@]}-1; i++)); do xdotool keydown "${keys[i]}"; done
+        xdotool key "${keys[-1]}"; for ((i=${#keys[@]}-2; i>=0; i--)); do xdotool keyup "${keys[i]}"; done
+    fi
 fi
-
-if [ ${#keys[@]} -eq 0 ]; then
-    echo "Error: no keys provided" >&2
-    exit 1
-fi
-
-# Execution Logic
-if [ ${#keys[@]} -eq 1 ]; then
-    [ "$verbose" = "1" ] && echo "DEBUG: executing: $tool key \"${keys[0]}\"" >&2
-    do_key "${keys[0]}"
-    apply_wait
-    exit $?
-fi
-
-if [ "$tool" = "ydotool" ]; then
-    key_sequence=""
-    for ((i=0; i<${#keys[@]}; i++)); do
-        converted_key=$(convert_key_for_tool "${keys[i]}" "$tool")
-        if [ -z "$key_sequence" ]; then
-            key_sequence="$converted_key"
-        else
-            key_sequence="$key_sequence+$converted_key"
-        fi
-    done
-    [ "$verbose" = "1" ] && echo "DEBUG: executing: $tool key \"$key_sequence\"" >&2
-    ydotool key "$key_sequence"
-    ret=$?
-    apply_wait
-else
-    for ((i=0; i<${#keys[@]}-1; i++)); do
-        [ "$verbose" = "1" ] && echo "DEBUG: executing: $tool keydown \"${keys[i]}\"" >&2
-        do_keydown "${keys[i]}"
-        apply_wait
-    done
-
-    [ "$verbose" = "1" ] && echo "DEBUG: executing: $tool key \"${keys[-1]}\"" >&2
-    do_key "${keys[-1]}"
-    ret=$?
-    apply_wait
-
-    for ((i=${#keys[@]}-2; i>=0; i--)); do
-        [ "$verbose" = "1" ] && echo "DEBUG: executing: $tool keyup \"${keys[i]}\"" >&2
-        do_keyup "${keys[i]}"
-        apply_wait
-    done
-fi
-
-exit $ret
