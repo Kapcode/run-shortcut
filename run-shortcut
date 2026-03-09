@@ -1,0 +1,275 @@
+#!/bin/bash
+# run-shortcut - emulate a keyboard shortcut using xdotool or ydotool
+
+# --- STRICT NAMING ENFORCEMENT ---
+SCRIPT_NAME=$(basename "$0")
+if [ "$SCRIPT_NAME" != "run-shortcut" ]; then
+    echo "❌ Error: Invalid filename detected ('$SCRIPT_NAME')." >&2
+    echo "This tool must be named exactly 'run-shortcut' (no .sh extension) to run." >&2
+    echo "Please rename the file: mv \"$0\" \"$(dirname "$0")/run-shortcut\"" >&2
+    exit 1
+fi
+# ---------------------------------
+
+TARGET_BIN="/usr/local/bin/run-shortcut"
+
+# --- INSTALLATION LOGIC ---
+if [ "$1" = "--install" ]; then
+    echo "Installing to $TARGET_BIN..."
+    if [ ! -w "/usr/local/bin" ]; then
+        sudo cp "$0" "$TARGET_BIN" && sudo chmod +x "$TARGET_BIN"
+    else
+        cp "$0" "$TARGET_BIN" && chmod +x "$TARGET_BIN"
+    fi
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ Successfully installed! You can now run 'run-shortcut' from anywhere."
+        exit 0
+    else
+        echo "❌ Installation failed." >&2
+        exit 1
+    fi
+fi
+
+if [ "$1" = "--uninstall" ]; then
+    echo "Removing $TARGET_BIN..."
+    if [ ! -w "/usr/local/bin" ]; then
+        sudo rm -f "$TARGET_BIN"
+    else
+        rm -f "$TARGET_BIN"
+    fi
+    echo "✅ Successfully uninstalled."
+    exit 0
+fi
+# --- END INSTALLATION LOGIC ---
+
+if [ -z "$BASH_VERSION" ]; then
+    echo "This script requires bash; please invoke with 'bash $0'" >&2
+    exit 1
+fi
+
+print_usage() {
+    cat <<'EOF'
+Usage: run-shortcut [options] "<shortcut>"
+
+Installation:
+    --install                Copy this script to /usr/local/bin/run-shortcut
+    --uninstall              Remove run-shortcut from /usr/local/bin
+
+Options:
+    -h, --help               Show this help message and exit
+    -v, --verbose            Print debug output
+    --tool TOOL              Tool to use: xdotool or ydotool (auto-detected)
+    --focus-wait             Pause and wait for Enter before sending keys
+    -d <ms>                  Fixed delay before executing the shortcut (ms)
+    -rd <min>,<max>          Random delay before execution (ms)
+    -aw <ms> or -w <ms>      Fixed autowait between key events (ms)
+    -raw <min>,<max>         Random autowait between key events (ms)
+
+Example: run-shortcut -d 1000 -aw 50 "ctrl alt space"
+         run-shortcut --focus-wait "o"
+EOF
+}
+
+convert_key_for_tool() {
+    local key="$1"
+    local tool="$2"
+    
+    if [ "$tool" = "ydotool" ]; then
+        case "$key" in
+            ctrl|control) echo "lctrl" ;;
+            alt)          echo "lalt" ;;
+            shift)        echo "lshift" ;;
+            super|windows)echo "lmeta" ;;
+            *)            echo "$key" ;;
+        esac
+    else
+        echo "$key"
+    fi
+}
+
+do_keydown() {
+    local key="$1"
+    local converted_key=$(convert_key_for_tool "$key" "$tool")
+    
+    if [ "$tool" = "xdotool" ]; then
+        xdotool keydown "$converted_key"
+    elif [ "$tool" = "ydotool" ]; then
+        echo "ydotool logic handled in unified sequence block" >/dev/null
+    fi
+}
+
+do_keyup() {
+    local key="$1"
+    local converted_key=$(convert_key_for_tool "$key" "$tool")
+    
+    if [ "$tool" = "xdotool" ]; then
+        xdotool keyup "$converted_key"
+    fi
+}
+
+do_key() {
+    local key="$1"
+    local converted_key=$(convert_key_for_tool "$key" "$tool")
+    
+    if [ "$tool" = "xdotool" ]; then
+        xdotool key "$converted_key"
+    elif [ "$tool" = "ydotool" ]; then
+        ydotool key "$converted_key"
+    fi
+}
+
+apply_wait() {
+    local wait_ms=0
+    if [ "$random_wait_max" != "0" ]; then
+        local range=$((random_wait_max - random_wait_min + 1))
+        wait_ms=$((RANDOM % range + random_wait_min))
+    elif [ "$autowait" != "0" ]; then
+        wait_ms=$autowait
+    fi
+
+    if [ "$wait_ms" != "0" ]; then
+        local wait_sec=$(awk "BEGIN {printf \"%.3f\", $wait_ms/1000}")
+        sleep "$wait_sec"
+    fi
+}
+
+check_dependencies() {
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "Error: $tool is not installed or not in PATH." >&2
+        exit 1
+    fi
+
+    local detected_ver="unknown"
+
+    if [ "$tool" = "ydotool" ]; then
+        local ver_output=$(ydotool -V 2>/dev/null || ydotool --version 2>/dev/null)
+        
+        if [ -z "$ver_output" ] && command -v dpkg >/dev/null 2>&1; then
+            ver_output=$(dpkg-query -W -f='${Version}' ydotool 2>/dev/null)
+        fi
+
+        local y_ver=$(echo "$ver_output" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+        [ -n "$y_ver" ] && detected_ver="$y_ver"
+        
+    elif [ "$tool" = "xdotool" ]; then
+        local x_ver=$(xdotool --version 2>&1 | grep -oE '[0-9]+\.[0-9]+.*' | head -n 1)
+        [ -n "$x_ver" ] && detected_ver="$x_ver"
+    fi
+
+    [ "$verbose" = "1" ] && echo "DEBUG: $tool version detected: $detected_ver" >&2
+}
+
+# Detect X11 vs Wayland
+if [ -n "$WAYLAND_DISPLAY" ]; then
+    default_tool="ydotool"
+elif [ -n "$DISPLAY" ]; then
+    default_tool="xdotool"
+else
+    echo "Error: Neither X11 (DISPLAY) nor Wayland (WAYLAND_DISPLAY) detected." >&2
+    exit 1
+fi
+
+tool="$default_tool"
+delay_before=0
+autowait=0
+verbose=0
+focus_wait=0
+random_delay_min=0
+random_delay_max=0
+random_wait_min=0
+random_wait_max=0
+
+trap 'echo "Interrupted"; exit 1' INT
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -v|--verbose) verbose=1; shift ;;
+        --tool) tool="$2"; shift 2 ;;
+        --focus-wait) focus_wait=1; shift ;;
+        -h|--help) print_usage; exit 0 ;;
+        -d|--delay) delay_before="$2"; shift 2 ;;
+        -rd|--randomdelay) IFS=',' read -r random_delay_min random_delay_max <<< "$2"; shift 2 ;;
+        -aw|--autowait|-w|--wait) autowait="$2"; shift 2 ;;
+        -raw|--randomwait) IFS=',' read -r random_wait_min random_wait_max <<< "$2"; shift 2 ;;
+        --) shift; break ;;
+        -*|--*) echo "Unknown option: $1" >&2; exit 1 ;;
+        *) break ;;
+    esac
+done
+
+if [ $# -ne 1 ]; then
+    print_usage
+    exit 1
+fi
+
+check_dependencies
+
+shortcut="$1"
+read -ra keys <<< "$shortcut"
+
+[ "$verbose" = "1" ] && echo "DEBUG: tool=$tool, parsed keys: ${keys[*]}" >&2
+
+# Apply initial delay
+if [ "$random_delay_max" != "0" ]; then
+    range=$((random_delay_max - random_delay_min + 1))
+    delay_before=$((RANDOM % range + random_delay_min))
+fi
+
+if [ "$delay_before" != "0" ]; then
+    sleep_time=$(awk "BEGIN {printf \"%.3f\", $delay_before/1000}")
+    sleep "$sleep_time"
+fi
+
+if [ "$focus_wait" = "1" ]; then
+    echo "Press Enter to send the shortcut..." >&2
+    read -r
+fi
+
+if [ ${#keys[@]} -eq 0 ]; then
+    echo "Error: no keys provided" >&2
+    exit 1
+fi
+
+# Execution Logic
+if [ ${#keys[@]} -eq 1 ]; then
+    [ "$verbose" = "1" ] && echo "DEBUG: executing: $tool key \"${keys[0]}\"" >&2
+    do_key "${keys[0]}"
+    apply_wait
+    exit $?
+fi
+
+if [ "$tool" = "ydotool" ]; then
+    key_sequence=""
+    for ((i=0; i<${#keys[@]}; i++)); do
+        converted_key=$(convert_key_for_tool "${keys[i]}" "$tool")
+        if [ -z "$key_sequence" ]; then
+            key_sequence="$converted_key"
+        else
+            key_sequence="$key_sequence+$converted_key"
+        fi
+    done
+    [ "$verbose" = "1" ] && echo "DEBUG: executing: $tool key \"$key_sequence\"" >&2
+    ydotool key "$key_sequence"
+    ret=$?
+    apply_wait
+else
+    for ((i=0; i<${#keys[@]}-1; i++)); do
+        [ "$verbose" = "1" ] && echo "DEBUG: executing: $tool keydown \"${keys[i]}\"" >&2
+        do_keydown "${keys[i]}"
+        apply_wait
+    done
+
+    [ "$verbose" = "1" ] && echo "DEBUG: executing: $tool key \"${keys[-1]}\"" >&2
+    do_key "${keys[-1]}"
+    ret=$?
+    apply_wait
+
+    for ((i=${#keys[@]}-2; i>=0; i--)); do
+        [ "$verbose" = "1" ] && echo "DEBUG: executing: $tool keyup \"${keys[i]}\"" >&2
+        do_keyup "${keys[i]}"
+        apply_wait
+    done
+fi
+
+exit $ret
