@@ -1,9 +1,3 @@
-It looks like you hit a YAML parsing error—likely because of the mix of Markdown syntax and unescaped special characters when you tried to save it. I've cleaned it up into a professional, properly formatted `README.md` structure.
-
-Since you're managing this as part of your **Kapcode Infrastructure**, this layout focuses on quick setup for your MX Linux/Pop!_OS workstation while highlighting the technical "under-the-hood" work we did for the multi-GPU and Wayland support.
-
----
-
 # ⚡ Kapcode run-shortcut
 
 **The Universal Linux Macro Engine**
