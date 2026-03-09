@@ -62,7 +62,7 @@ if [ "$1" = "--make-launcher" ]; then
     
     mkdir -p "$LAUNCHER_DIR"
     
-    # Create a safe filename (e.g. "My App" -> "rs-my-app.desktop")
+    # Create a safe filename
     SAFE_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
     FILE_PATH="$LAUNCHER_DIR/rs-$SAFE_NAME.desktop"
 
@@ -105,12 +105,12 @@ if [ "$1" = "--list-launchers" ]; then
         safe_id=$(basename "$f" | sed 's/^rs-//;s/\.desktop$//')
         
         echo "• $display_name"
-        echo "  ID:   $safe_id (Use this to remove)"
-        echo "  Cmd:  $keys"
+        echo "  Keys:   $keys"
+        echo "  Remove: run-shortcut --remove-launcher \"$safe_id\""
         echo ""
     done
     
-    if [ $found -eq 0 ]; then
+    if [ "$found" -eq 0 ]; then
         echo "No launchers found."
     fi
     exit 0
