@@ -8,6 +8,7 @@ Developed by [Kapcode](https://github.com/kapcode) for specialized macro solutio
 ## 🚀 Features
 
 - **Auto-Detection:** Automatically switches between `xdotool` (X11) and `ydotool` (Wayland).
+- **Desktop Integration:** Native support for generating Pop!_OS/GNOME/Xfce `.desktop` app launchers.
 - **Native Installation:** Includes a built-in installer to deploy itself to `/usr/local/bin`.
 - **Strict Naming Enforcement:** Rejects execution if renamed or given a `.sh` extension, ensuring it is treated as a compiled system binary.
 - **Modifier Support:** Handles complex combinations like `ctrl alt shift p` natively.
@@ -23,6 +24,8 @@ The easiest way to use `run-shortcut` is to install it globally on your system.
    git clone [https://github.com/kapcode/run-shortcut.git](https://github.com/kapcode/run-shortcut.git)
    cd run-shortcut
 
+
+
 2. **Make it executable:**
 ```bash
 chmod +x run-shortcut
@@ -37,7 +40,7 @@ chmod +x run-shortcut
 ```
 
 
-*(This copies the script to `/usr/local/bin/run-shortcut`, allowing you to run it from anywhere. It will prompt for your `sudo` password if required.)*
+*(This copies the script to `/usr/local/bin/run-shortcut`. It will prompt for your `sudo` password if required.)*
 
 ### Uninstallation
 
@@ -48,7 +51,46 @@ run-shortcut --uninstall
 
 ```
 
-## 🛠 Usage
+## 🖥️ Desktop Integration (App Launchers)
+
+You can turn any macro into a clickable desktop application that appears in your system search bar (like the Pop!_OS Launcher).
+
+### Create a Launcher
+
+The `--make-launcher` command requires exactly **3 arguments**: `"Name"` `"-flags"` `"keys"`.
+*(If you do not want to pass any flags, you must provide an empty string `""`).*
+
+**Example with a delay (Recommended so the launcher loses focus before typing):**
+
+```bash
+run-shortcut --make-launcher "Paste" "-d 2000" "ctrl v"
+
+```
+
+**Example without flags:**
+
+```bash
+run-shortcut --make-launcher "Quick Refresh" "" "ctrl r"
+
+```
+
+### Manage Launchers
+
+To see a list of all custom launchers created by this tool and their IDs:
+
+```bash
+run-shortcut --list-launchers
+
+```
+
+To delete a launcher from your system:
+
+```bash
+run-shortcut --remove-launcher paste
+
+```
+
+## 🛠 Usage (CLI)
 
 The script takes a single string argument consisting of key names separated by spaces. Modifiers (e.g. `ctrl`, `alt`, `shift`) are held while the final key is pressed.
 
@@ -115,6 +157,5 @@ run-shortcut -v "ctrl l"
 MIT
 
 ```
-http-no-link-yet
 
 ```
