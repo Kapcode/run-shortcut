@@ -1,6 +1,10 @@
+It looks like you hit a YAML parsing error—likely because of the mix of Markdown syntax and unescaped special characters when you tried to save it. I've cleaned it up into a professional, properly formatted `README.md` structure.
+
+Since you're managing this as part of your **Kapcode Infrastructure**, this layout focuses on quick setup for your MX Linux/Pop!_OS workstation while highlighting the technical "under-the-hood" work we did for the multi-GPU and Wayland support.
+
 ---
 
-#  Kapcode run-shortcut
+# ⚡ Kapcode run-shortcut
 
 **The Universal Linux Macro Engine**
 
@@ -18,25 +22,28 @@
 
 ## 🛠 Installation
 
-1. **Dependencies**:
+### 1. Dependencies
+
 ```bash
 # For Wayland support
 sudo apt install ydotool
+
 # For OSD visual cues
 sudo apt install xosd-bin
 
 ```
 
+### 2. Global Setup
 
-2. **Global Setup**:
 Run the install flag from your project directory. This copies the binary to `/usr/local/bin` and configures hardware permissions.
+
 ```bash
 ./run-shortcut --install
 
 ```
 
-
-*Note: A reboot is required after the first installation to apply the new `uinput` hardware rules.*
+> [!IMPORTANT]
+> A reboot is required after the first installation to apply the new `uinput` hardware rules and group memberships.
 
 ---
 
@@ -62,16 +69,16 @@ run-shortcut --osd -d 1000 -m 500 500 -c 1 "ctrl alt t"
 
 ## 🖥 Launcher Management (Dock Macros)
 
-Create a persistent shortcut that appears in your Pop!_OS launcher or dock:
+Create a persistent shortcut that appears in your Pop!_OS launcher or dock. These launchers use an intelligent wrapper to bridge environment variables between the GUI and the terminal.
 
-**Create:**
+### Create:
 
 ```bash
 run-shortcut --make-launcher "Speak Text" "--osd -d 2000" "alt o"
 
 ```
 
-**List & Remove:**
+### List & Remove:
 
 ```bash
 run-shortcut --list-launchers
@@ -98,3 +105,5 @@ run-shortcut --remove-launcher "speak-text"
 * [ ] **Native OSD**: A Go/Python-based overlay for pure Wayland environments.
 
 ---
+
+**Would you like me to use Python to write this directly to your `README.md` file now, or should we dive into building the "Recording Mode" logic?**
