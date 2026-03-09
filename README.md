@@ -1,2 +1,107 @@
+```markdown
 # run-shortcut
-Run keyboard shortcuts in terminal (x11 + wayland)
+
+A universal, cross-platform keyboard shortcut emulator for Linux. `run-shortcut` automatically detects whether you are running **X11** or **Wayland** and routes keystrokes through `xdotool` or `ydotool` accordingly.
+
+Developed by [Kapcode](https://github.com/kapcode) for specialized macro solutions and system automation.
+
+## 🚀 Features
+
+- **Auto-Detection:** Automatically switches between `xdotool` (X11) and `ydotool` (Wayland).
+- **Native Installation:** Includes a built-in installer to deploy itself to `/usr/local/bin`.
+- **Strict Naming Enforcement:** Rejects execution if renamed or given a `.sh` extension, ensuring it is treated as a compiled system binary.
+- **Modifier Support:** Handles complex combinations like `ctrl alt shift p` natively.
+- **Human Simulation:** Includes fixed or randomized delays and dynamic "autowait" between keystrokes to mimic human typing.
+- **Dependency Aware:** Performs intelligent version checks (via binary or `dpkg`) and provides compatibility warnings for older tool builds.
+
+## 📦 Installation
+
+The easiest way to use `run-shortcut` is to install it globally on your system. 
+
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/kapcode/run-shortcut.git](https://github.com/kapcode/run-shortcut.git)
+   cd run-shortcut
+
+```
+
+2. **Make it executable:**
+```bash
+chmod +x run-shortcut
+
+```
+
+
+3. **Install it globally:**
+```bash
+./run-shortcut --install
+
+```
+
+
+*(This copies the script to `/usr/local/bin/run-shortcut`, allowing you to run it from anywhere. It will prompt for your `sudo` password if required.)*
+
+### Uninstallation
+
+To remove the tool from your system, simply run:
+
+```bash
+run-shortcut --uninstall
+
+```
+
+## 🛠 Usage
+
+The script takes a single string argument consisting of key names separated by spaces. Modifiers (e.g. `ctrl`, `alt`, `shift`) are held while the final key is pressed.
+
+### Basic Shortcut
+
+```bash
+run-shortcut "ctrl o"
+
+```
+
+### With Delay (2 second wait before executing)
+
+Useful if you need time to switch window focus before the macro fires:
+
+```bash
+run-shortcut -d 2000 "ctrl alt space"
+
+```
+
+### Human-like Randomized Typing
+
+Add a random delay between 20ms and 100ms between every key event to simulate a human user:
+
+```bash
+run-shortcut -raw 20,100 "ctrl shift t"
+
+```
+
+### Focus Wait
+
+Pause and wait for manual confirmation (pressing Enter in the terminal) before firing the keystrokes:
+
+```bash
+run-shortcut --focus-wait "super d"
+
+```
+
+### Debugging & Verbose Mode
+
+If a shortcut isn't firing, use `-v` to see exactly which backend tool and keycodes are being used, as well as version detection:
+
+```bash
+run-shortcut -v "ctrl l"
+
+```
+
+## ⚠️ Requirements
+
+* **X11:** Requires `xdotool` (`sudo apt install xdotool`)
+* **Wayland:** Requires `ydotool` and the `ydotoold` daemon running (`sudo apt install ydotool`)
+
+## 📄 License
+
+MIT
